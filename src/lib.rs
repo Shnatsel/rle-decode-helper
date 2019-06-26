@@ -30,20 +30,21 @@ use std::{
 /// * `lookbehind_length` is 0
 /// * `lookbehind_length` >= `buffer.len()`
 /// * `fill_length + buffer.len()` would overflow
+#[inline(always)]
 pub fn rle_decode<T>(
     buffer: &mut Vec<T>,
     mut lookbehind_length: usize,
     mut fill_length: usize,
 ) where T: Copy {
-    assert_ne!(lookbehind_length, 0, "attempt to repeat fragment of size 0");
-    
+    if lookbehind_length == 0 {zero_repeat_fail()};
+
     let copy_fragment_start = buffer.len()
         .checked_sub(lookbehind_length)
         .expect("attempt to repeat fragment larger than buffer size");
 
     // Reserve space for *all* copies
     buffer.reserve(fill_length);
-    
+
     while fill_length > 0 {
         let fill_size = cmp::min(lookbehind_length, fill_length);
         append_from_within(
@@ -55,6 +56,11 @@ pub fn rle_decode<T>(
     }
 }
 
+/// Copy of `vec::append_from_within()` proposed for inclusion in stdlib,
+/// see https://github.com/rust-lang/rfcs/pull/2714
+/// Heavily based on the implementation of `slice::copy_within()`,
+/// so we're pretty sure the implementation is sound
+#[inline(always)]
 fn append_from_within<T, R: ops::RangeBounds<usize>>(seif: &mut Vec<T>, src: R) where T: Copy, {
     let src_start = match src.start_bound() {
         ops::Bound::Included(&n) => n,
@@ -87,10 +93,19 @@ fn append_from_within<T, R: ops::RangeBounds<usize>>(seif: &mut Vec<T>, src: R) 
     }
 }
 
+// actually doesn't give any perf advantages, but we're keeping it
+// so we don't diverge from the proposed stdlib impl
 #[inline(never)]
 #[cold]
 fn vec_index_overflow_fail() -> ! {
     panic!("attempted to index vec up to maximum usize");
+}
+
+// separating this into a function has measurable perf difference
+#[inline(never)]
+#[cold]
+fn zero_repeat_fail() -> ! {
+    panic!("attempt to repeat fragment of size 0");
 }
 
 #[cfg(test)]

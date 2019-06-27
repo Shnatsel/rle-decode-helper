@@ -30,6 +30,7 @@ use std::{
 /// * `lookbehind_length` is 0
 /// * `lookbehind_length` >= `buffer.len()`
 /// * `fill_length + buffer.len()` would overflow
+#[inline(always)]
 pub fn rle_decode<T>(
     buffer: &mut Vec<T>,
     mut lookbehind_length: usize,
@@ -57,6 +58,37 @@ pub fn rle_decode<T>(
     }
 }
 
+#[inline(always)]
+pub fn rle_decode_simple<T>(
+    buffer: &mut Vec<T>,
+    lookbehind_length: usize,
+    mut fill_length: usize,
+) where T: Copy {
+    if lookbehind_length == 0 {
+        lookbehind_length_fail();
+    }
+
+    let copy_fragment_start = buffer.len()
+        .checked_sub(lookbehind_length)
+        .expect("attempt to repeat fragment larger than buffer size");
+
+    // Reserve space for *all* copies
+    buffer.reserve(fill_length);
+    while fill_length >= lookbehind_length {
+        append_from_within(
+            buffer,
+            copy_fragment_start..(copy_fragment_start + lookbehind_length)
+        );
+        fill_length -= lookbehind_length;
+    }
+    // Fill in the last `fill_length % lookbehind_length` bytes
+    append_from_within(
+        buffer,
+        copy_fragment_start..(copy_fragment_start + fill_length)
+    );
+}
+
+
 /// Copy of `vec::append_from_within()` proposed for inclusion in stdlib,
 /// see https://github.com/rust-lang/rfcs/pull/2714
 /// Heavily based on the implementation of `slice::copy_within()`,
@@ -64,6 +96,7 @@ pub fn rle_decode<T>(
 ///
 /// Note that the generic bounds were replaced by an explicit a..b range.
 /// This is so that we can compile this on older toolchains (< 1.28).
+#[inline(always)]
 fn append_from_within<T>(seif: &mut Vec<T>, src: ops::Range<usize>) where T: Copy, {
     assert!(src.start <= src.end, "src end is before src start");
     assert!(src.end <= seif.len(), "src is out of bounds");
